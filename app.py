@@ -31,7 +31,7 @@ def parse_and_clean_sail_mm(df_full):
 
 def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy stabilną i gładką powierzchnię 2D żagla za pomocą interpolacji liniowej griddata (100% niezawodności).
+    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji sześciennej griddata.
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -45,10 +45,9 @@ def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    # <<< BEZWARUNKOWA POPRAWKA: Metoda 'linear' gwarantuje poprawne obliczenia i zapobiega pustym wykresom [-1, 1] >>>
-    Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
+    Z_grid = griddata(points, values, (grid_x, grid_y), method='cubic')
     
-    # Płynna interpolacja liku wolnego (eliminacja schodków)
+    # Płynna interpolacja liku wolnego (eliminacja schodków za pomocą dokładnego przycinania)
     for i, y_val in enumerate(grid_y[:, 0]):
         max_x = np.interp(y_val, chord_lengths.index, chord_lengths.values)
         Z_grid[i, grid_x[i, :] > max_x] = np.nan
@@ -153,6 +152,14 @@ z_multiplier = st.sidebar.slider(
     help="Pozwala uwypuklić profil żagla w przestrzeni 3D. 1.0 oznacza proporcje rzeczywiste."
 )
 
+# <<< NOWOŚĆ: Wybór palety barw dla wykresu różnicowego >>>
+diff_cmap = st.sidebar.selectbox(
+    "Paleta kolorów wykresu różnic",
+    options=["viridis", "cividis", "spectral", "rdbu"],
+    index=0, # Domyślnie ustawiony na 'viridis' (ten sam co żagle, łagodny gradient)
+    help="Pozwala zmienić paletę kolorystyczną na wykresie różnicowym 3D."
+)
+
 if orig_file and mod_file:
     # Wczytanie plików wejściowych
     df_orig_raw = pd.read_csv(orig_file, sep=';', decimal=',', index_col=0)
@@ -206,7 +213,7 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
-        # Dynamiczne skalowanie osi Z przy użyciu wartości z suwaka (z_multiplier)
+        # Precyzyjny dobór proporcji osi (aspectratio) na podstawie rzeczywistych wymiarów [mm]
         y_to_x_ratio_orig = (df_orig.index.max() - df_orig.index.min()) / chords_orig.max()
         z_to_x_ratio_orig = (global_max_depth / chords_orig.max()) * z_multiplier
         
@@ -259,11 +266,11 @@ if orig_file and mod_file:
                 hoverinfo='skip'
             ))
             
-            # Powierzchnia różnicowa
+            # Powierzchnia różnicowa pokolorowana dynamiczną paletą wybraną z suwaka
             fig_diff.add_trace(go.Surface(
                 x=x_comm_ax, y=y_comm_ax, z=Z_mod_comm,
                 surfacecolor=Z_diff,
-                colorscale='rdbu',
+                colorscale=diff_cmap, # <<< NOWOŚĆ: Dynamiczny wybór palety barw
                 cmin=-max_abs_diff,
                 cmax=max_abs_diff,
                 colorbar=dict(title="Różnica (mm)")
