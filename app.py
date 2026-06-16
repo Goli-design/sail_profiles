@@ -136,7 +136,7 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
 # --- INTERFEJS UŻYTKOWNIKA ---
 
 st.title("⛵ Analizator i komparator profili żagli 49er / FX")
-st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**.")
+st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**. Autor: Mariusz Goliński.")
 
 # Panel boczny - Przesyłanie plików i konfiguracja
 st.sidebar.header("📁 Wczytywanie danych")
