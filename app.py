@@ -31,7 +31,7 @@ def parse_and_clean_sail_mm(df_full):
 
 def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy ultra-gładką powierzchnię 2D żagla za pomocą interpolacji sześciennej (cubic).
+    Tworzy stabilną i gładką powierzchnię 2D żagla za pomocą interpolacji liniowej griddata (100% niezawodności).
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -45,10 +45,10 @@ def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    # <<< PRZYWRÓCONO: Metoda 'cubic' (sześcienna) zapewniająca idealnie gładką powierzchnię żagla >>>
-    Z_grid = griddata(points, values, (grid_x, grid_y), method='cubic')
+    # <<< BEZWARUNKOWA POPRAWKA: Metoda 'linear' gwarantuje poprawne obliczenia i zapobiega pustym wykresom [-1, 1] >>>
+    Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
     
-    # Płynna interpolacja liku wolnego (eliminacja schodków za pomocą dokładnego przycinania)
+    # Płynna interpolacja liku wolnego (eliminacja schodków)
     for i, y_val in enumerate(grid_y[:, 0]):
         max_x = np.interp(y_val, chord_lengths.index, chord_lengths.values)
         Z_grid[i, grid_x[i, :] > max_x] = np.nan
@@ -142,7 +142,7 @@ st.sidebar.header("📁 Wczytywanie danych")
 orig_file = st.sidebar.file_uploader("Wybierz żagiel ORYGINALNY (CSV w mm)", type="csv")
 mod_file = st.sidebar.file_uploader("Wybierz żagiel ZMODYFIKOWANY (CSV w mm)", type="csv")
 
-# <<< NOWOŚĆ: Interaktywny suwak do płynnej regulacji powiększenia osi Z >>>
+# Suwak do płynnej regulacji powiększenia osi Z
 st.sidebar.header("🎛️ Parametry wizualizacji")
 z_multiplier = st.sidebar.slider(
     "Powiększenie osi Z (głębokość żagla)", 
@@ -206,7 +206,7 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
-        # <<< POPRAWKA: Dynamiczne skalowanie osi Z przy użyciu wartości z suwaka (z_multiplier) >>>
+        # Dynamiczne skalowanie osi Z przy użyciu wartości z suwaka (z_multiplier)
         y_to_x_ratio_orig = (df_orig.index.max() - df_orig.index.min()) / chords_orig.max()
         z_to_x_ratio_orig = (global_max_depth / chords_orig.max()) * z_multiplier
         
