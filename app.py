@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.colors as mcolors
 from scipy.interpolate import griddata, UnivariateSpline
 import io
 import re
@@ -12,6 +14,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Wyłączenie ostrzeżeń Matplotlib dotyczących wątków
+st.set_option('deprecation.showPyplotGlobalUse', False)
 
 # --- FUNKCJE POMOCNICZE (MATEMATYKA I PRZETWARZANIE) ---
 
@@ -120,7 +125,7 @@ def analyze_profile_geometry(df_data, chord_lengths):
 
 # --- INTERFEJS UŻYTKOWNIKA ---
 
-st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli")
+st.title("⛵ Analizator i Komparator Żagli")
 st.markdown("Narzędzie dedykowane dla klas **49er** oraz **49er FX**. Porównuje dwa projekty żagli w przestrzeni 3D oraz oblicza parametry profili.")
 
 # Panel boczny - Przesyłanie plików
@@ -141,11 +146,12 @@ if orig_file and mod_file:
         df_orig, chords_orig = parse_and_clean_sail(df_orig_raw)
         df_mod, chords_mod = parse_and_clean_sail(df_mod_raw)
         
-        # Tworzenie wspólnej Siatki Głównej do interpolacji
+        # <<< POPRAWKA: Obliczenie maksymalnej cięciwy na podstawie ujednoliconych jednostek (w cm) >>>
         max_chord = max(chords_orig.max(), chords_mod.max())
         max_height = max(df_orig.index.max(), df_mod.index.max())
         min_height = min(df_orig.index.min(), df_mod.index.min())
 
+        # Tworzenie prawidłowo wyskalowanej Siatki Głównej (w cm)
         x_master = np.arange(0, max_chord + 5, 5)
         y_master = np.arange(min_height, max_height + 5, 5)
         X_master, Y_master = np.meshgrid(x_master, y_master)
@@ -167,62 +173,74 @@ if orig_file and mod_file:
 
         with tab1:
             st.header("Porównanie geometrii żagli (Wygładzone modele 3D)")
-            st.write("Wykresy są interaktywne. Możesz je obracać myszką, przybliżać i sprawdzać wartości punktów.")
+            st.write("Wizualizacja wygenerowana przy zachowaniu proporcji rzeczywistych (2x przewyższenie skali Z).")
             
-            col1, col2 = st.columns(2)
+            # Tworzenie stabilnego wykresu Matplotlib dla obu żagli
+            fig_comp = plt.figure(figsize=(18, 8))
             
-            # Parametry sceny Plotly zachowujące realne proporcje z 2x przewyższeniem osi Z
-            scene_layout = dict(
-                aspectratio=dict(x=1, y=max_height/max_chord, z=(global_max_depth/10/max_chord)*2),
-                xaxis=dict(title='Odległość (cm)'),
-                yaxis=dict(title='Wysokość (cm)'),
-                zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
-            )
+            # --- ŻAGIEL 1: ORYGINAŁ ---
+            ax1 = fig_comp.add_subplot(1, 2, 1, projection='3d')
+            surf1 = ax1.plot_surface(X_master, Y_master, Z_orig, cmap='viridis', 
+                                     vmin=0, vmax=global_max_depth, edgecolor='none', alpha=0.9)
+            ax1.set_title(f'Oryginalny: {orig_name}', fontsize=14, pad=20)
+            ax1.set_box_aspect((np.nanmax(X_master), np.nanmax(Y_master), (global_max_depth/10) * 2))
+            ax1.view_init(elev=25., azim=-135)
+            ax1.set_xlabel('Odległość (cm)')
+            ax1.set_ylabel('Wysokość (cm)')
+            ax1.set_zlabel("Głębokość (mm)")
 
-            with col1:
-                st.subheader(f"Oryginał: {orig_name}")
-                # <<< POPRAWKA: 'viridis' z małej litery
-                fig1 = go.Figure(data=[go.Surface(x=X_master, y=Y_master, z=Z_orig, colorscale='viridis', cmin=0, cmax=global_max_depth)])
-                fig1.update_layout(scene=scene_layout, margin=dict(l=0, r=0, b=0, t=40))
-                st.plotly_chart(fig1, use_container_width=True)
+            # --- ŻAGIEL 2: MODYFIKACJA ---
+            ax2 = fig_comp.add_subplot(1, 2, 2, projection='3d')
+            surf2 = ax2.plot_surface(X_master, Y_master, Z_mod, cmap='viridis', 
+                                     vmin=0, vmax=global_max_depth, edgecolor='none', alpha=0.9)
+            ax2.set_title(f'Zmodyfikowany: {mod_name}', fontsize=14, pad=20)
+            ax2.set_box_aspect((np.nanmax(X_master), np.nanmax(Y_master), (global_max_depth/10) * 2))
+            ax2.view_init(elev=25., azim=-135)
+            ax2.set_xlabel('Odległość (cm)')
+            ax2.set_ylabel('Wysokość (cm)')
+            ax2.set_zlabel("Głębokość (mm)")
 
-            with col2:
-                st.subheader(f"Modyfikacja: {mod_name}")
-                # <<< POPRAWKA: 'viridis' z małej litery
-                fig2 = go.Figure(data=[go.Surface(x=X_master, y=Y_master, z=Z_mod, colorscale='viridis', cmin=0, cmax=global_max_depth)])
-                fig2.update_layout(scene=scene_layout, margin=dict(l=0, r=0, b=0, t=40))
-                st.plotly_chart(fig2, use_container_width=True)
+            # Estetyczne ułożenie legendy bez nachodzenia na wykresy
+            fig_comp.subplots_adjust(right=0.85)
+            cbar_ax = fig_comp.add_axes([0.88, 0.25, 0.02, 0.5])
+            cbar = fig_comp.colorbar(surf2, cax=cbar_ax)
+            cbar.set_label('Głębokość profilu (mm)', size=12)
+
+            st.pyplot(fig_comp)
 
         with tab2:
             st.header("Trójwymiarowy Wykres Różnicowy")
             st.write("Czerwony kolor oznacza miejsca, gdzie żagiel zmodyfikowany jest głębszy. Niebieski - gdzie jest płaski.")
             
-            fig_diff = go.Figure()
+            fig_diff = plt.figure(figsize=(11, 9))
+            ax3 = fig_diff.add_subplot(1, 1, 1, projection='3d')
+            ax3.set_title(f'Różnica 3D: "{mod_name}" vs "{orig_name}"', fontsize=14, pad=20)
+
+            # Normalizacja kolorów od -max_diff do +max_diff
+            norm = mcolors.Normalize(vmin=-max_abs_diff, vmax=max_abs_diff)
+            cmap = plt.get_cmap('coolwarm')
+            colors = cmap(norm(Z_diff))
+
+            # Żagiel oryginalny jako lekka, szara referencja pod spodem
+            ax3.plot_surface(X_master, Y_master, Z_orig, color='grey', alpha=0.15, edgecolor='none')
             
-            # Powierzchnia oryginalnego żagla jako półprzezroczyste szare odniesienie
-            fig_diff.add_trace(go.Surface(
-                x=X_master, y=Y_master, z=Z_orig,
-                colorscale=[[0, 'grey'], [1, 'grey']],
-                showscale=False,
-                opacity=0.2,
-                hoverinfo='skip'
-            ))
-            
-            # Powierzchnia zmodyfikowana pokolorowana wartościami różnic (rdbu)
-            fig_diff.add_trace(go.Surface(
-                x=X_master, y=Y_master, z=Z_mod,
-                surfacecolor=Z_diff,
-                # <<< POPRAWKA: Zmiana 'Coolwarm' na 'rdbu' (małymi literami)
-                colorscale='rdbu',
-                cmin=-max_abs_diff,
-                cmax=max_abs_diff,
-                colorbar=dict(title="Różnica (mm)")
-            ))
-            
-            scene_layout_diff = scene_layout.copy()
-            scene_layout_diff['zaxis'] = dict(title='Głębokość (mm)')
-            fig_diff.update_layout(scene=scene_layout_diff, margin=dict(l=0, r=0, b=0, t=0))
-            st.plotly_chart(fig_diff, use_container_width=True)
+            # Żagiel zmodyfikowany pomalowany kolorami różnic
+            diff_surf = ax3.plot_surface(X_master, Y_master, Z_mod, facecolors=colors, 
+                                         linewidth=0, antialiased=True, shade=False, alpha=0.85)
+
+            ax3.set_box_aspect((np.nanmax(X_master), np.nanmax(Y_master), (global_max_depth/10) * 2))
+            ax3.view_init(elev=25., azim=-135)
+            ax3.set_xlabel('Odległość (cm)')
+            ax3.set_ylabel('Wysokość (cm)')
+            ax3.set_zlabel("Głębokość (mm)")
+
+            # Dodanie bocznej legendy różnic
+            m = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            m.set_array(Z_diff)
+            cbar_diff = fig_diff.colorbar(m, shrink=0.6, aspect=20, pad=0.05, ax=ax3)
+            cbar_diff.set_label(f'Różnica głębokości (mm, {mod_name} - {orig_name})', size=11)
+
+            st.pyplot(fig_diff)
 
         with tab3:
             st.header("Analiza Parametryczna Profili")
