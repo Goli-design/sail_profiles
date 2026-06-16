@@ -47,8 +47,7 @@ def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
 
     Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
     
-    # <<< ROZWIĄZANIE: Płynna interpolacja liku wolnego (eliminacja schodków) >>>
-    # Zamiast szukać najbliższego profilu, obliczamy dokładną, płynną cięciwę dla każdej wysokości siatki
+    # Płynna interpolacja liku wolnego (eliminacja schodków za pomocą dokładnego przycinania)
     for i, y_val in enumerate(grid_y[:, 0]):
         max_x = np.interp(y_val, chord_lengths.index, chord_lengths.values)
         Z_grid[i, grid_x[i, :] > max_x] = np.nan
@@ -160,14 +159,14 @@ if orig_file and mod_file:
         max_height = max(df_orig.index.max(), df_mod.index.max())
         min_height = min(df_orig.index.min(), df_mod.index.min())
 
-        # Siatka obliczeniowa z krokiem co 50 mm (czyli 5 cm)
-        x_orig_ax = np.arange(0, chords_orig.max() + 50, 50)
-        y_orig_ax = np.arange(df_orig.index.min(), df_orig.index.max() + 50, 50)
+        # <<< ROZWIĄZANIE GŁADKOŚCI: Zagęszczona siatka obliczeniowa (krok 10 mm poziom, 20 mm pion) >>>
+        x_orig_ax = np.arange(0, chords_orig.max() + 10, 10)
+        y_orig_ax = np.arange(df_orig.index.min(), df_orig.index.max() + 20, 20)
         X_orig_grid, Y_orig_grid = np.meshgrid(x_orig_ax, y_orig_ax)
         Z_orig = get_smooth_surface_2d_mm(df_orig, chords_orig, X_orig_grid, Y_orig_grid)
 
-        x_mod_ax = np.arange(0, chords_mod.max() + 50, 50)
-        y_mod_ax = np.arange(df_mod.index.min(), df_mod.index.max() + 50, 50)
+        x_mod_ax = np.arange(0, chords_mod.max() + 10, 10)
+        y_mod_ax = np.arange(df_mod.index.min(), df_mod.index.max() + 20, 20)
         X_mod_grid, Y_mod_grid = np.meshgrid(x_mod_ax, y_mod_ax)
         Z_mod = get_smooth_surface_2d_mm(df_mod, chords_mod, X_mod_grid, Y_mod_grid)
 
@@ -176,8 +175,8 @@ if orig_file and mod_file:
         common_max_height = min(df_orig.index.max(), df_mod.index.max())
         common_min_height = max(df_orig.index.min(), df_mod.index.min())
 
-        x_comm_ax = np.arange(0, common_max_chord + 50, 50)
-        y_comm_ax = np.arange(common_min_height, common_max_height + 50, 50)
+        x_comm_ax = np.arange(0, common_max_chord + 10, 10)
+        y_comm_ax = np.arange(common_min_height, common_max_height + 20, 20)
         X_comm, Y_comm = np.meshgrid(x_comm_ax, y_comm_ax)
 
         # Wygładzenie na siatce wspólnej
@@ -195,8 +194,7 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
-        # <<< ROZWIĄZANIE: Precyzyjny dobór proporcji osi (aspectratio) na podstawie rzeczywistych wymiarów [mm] >>>
-        # Zapewnia naturalny wygląd żagla i dokładnie dwukrotne (2x) powiększenie osi Z.
+        # Precyzyjny dobór proporcji osi (aspectratio) na podstawie rzeczywistych wymiarów [mm]
         y_to_x_ratio_orig = (df_orig.index.max() - df_orig.index.min()) / chords_orig.max()
         z_to_x_ratio_orig = (global_max_depth / chords_orig.max()) * 2.0  # Dokładnie 2-krotne powiększenie osi Z
         
