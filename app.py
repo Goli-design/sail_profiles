@@ -106,7 +106,8 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
         x_front_mid = max_depth_pos_mm / 2
         front_depth_mm = spline(x_front_mid)
 
-        x_rear_mid = max_depth_pos_mm + (chord_cm - max_depth_pos_mm) / 2 if 'chord_cm' in locals() else max_depth_pos_mm + (chord_mm - max_depth_pos_mm) / 2
+        # <<< POPRAWKA: Usunięto nieistniejącą zmienną chord_cm, używamy wyłącznie chord_mm >>>
+        x_rear_mid = max_depth_pos_mm + (chord_mm - max_depth_pos_mm) / 2
         rear_depth_mm = spline(x_rear_mid)
 
         if max_depth_mm > 0:
@@ -137,7 +138,7 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
 # --- INTERFEJS UŻYTKOWNIKA ---
 
 st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli [Skala mm]")
-st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**. Wykresy są w pełni interaktywne (3D).")
+st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**.")
 
 # Panel boczny - Przesyłanie plików
 st.sidebar.header("📁 Wczytywanie danych")
@@ -157,20 +158,23 @@ if orig_file and mod_file:
         df_orig, chords_orig = parse_and_clean_sail_mm(df_orig_raw)
         df_mod, chords_mod = parse_and_clean_sail_mm(df_mod_raw)
         
-        # 1. Obliczenia siatek lokalnych (eliminacja pustych wierszy NaN dla stabilności Plotly)
-        # Oryginał:
+        # Obliczenie maksymalnych wymiarów siatki głównej (w całości w [mm])
+        max_chord = max(chords_orig.max(), chords_mod.max())
+        max_height = max(df_orig.index.max(), df_mod.index.max())
+        min_height = min(df_orig.index.min(), df_mod.index.min())
+
+        # Siatka obliczeniowa z krokiem co 50 mm (czyli 5 cm)
         x_orig_ax = np.arange(0, chords_orig.max() + 50, 50)
         y_orig_ax = np.arange(df_orig.index.min(), df_orig.index.max() + 50, 50)
         X_orig_grid, Y_orig_grid = np.meshgrid(x_orig_ax, y_orig_ax)
         Z_orig = get_smooth_surface_2d_mm(df_orig, chords_orig, X_orig_grid, Y_orig_grid)
 
-        # Modyfikacja:
         x_mod_ax = np.arange(0, chords_mod.max() + 50, 50)
         y_mod_ax = np.arange(df_mod.index.min(), df_mod.index.max() + 50, 50)
         X_mod_grid, Y_mod_grid = np.meshgrid(x_mod_ax, y_mod_ax)
         Z_mod = get_smooth_surface_2d_mm(df_mod, chords_mod, X_mod_grid, Y_mod_grid)
 
-        # 2. Obliczenie siatki wspólnej dla wykresu różnic
+        # Obliczenie siatki wspólnej dla wykresu różnic
         common_max_chord = min(chords_orig.max(), chords_mod.max())
         common_max_height = min(df_orig.index.max(), df_mod.index.max())
         common_min_height = max(df_orig.index.min(), df_mod.index.min())
@@ -194,37 +198,37 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
+        # <<< POPRAWKA: Przejrzysty i czytelny dobór proporcji osi (aspectratio) chroniący przed zapadnięciem wykresu >>>
+        scene_orig = dict(
+            aspectratio=dict(x=1.0, y=1.2, z=0.6),
+            xaxis=dict(title='Odległość (mm)'),
+            yaxis=dict(title='Wysokość (mm)'),
+            zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
+        )
+        scene_mod = dict(
+            aspectratio=dict(x=1.0, y=1.2, z=0.6),
+            xaxis=dict(title='Odległość (mm)'),
+            yaxis=dict(title='Wysokość (mm)'),
+            zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
+        )
+
         with tab1:
             st.header("Interaktywne porównanie geometrii żagli (Obrotowe modele 3D)")
             st.write("Użyj myszki, aby obracać, przybliżać (scroll) i przesuwać wykresy. Wszystkie osie w [mm].")
             
             col1, col2 = st.columns(2)
-            
-            # Scena dla oryginału
-            scene_orig = dict(
-                aspectratio=dict(x=1, y=df_orig.index.max()/chords_orig.max(), z=(global_max_depth/chords_orig.max())*2),
-                xaxis=dict(title='Odległość (mm)'),
-                yaxis=dict(title='Wysokość (mm)'),
-                zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
-            )
-            # Scena dla modyfikacji
-            scene_mod = dict(
-                aspectratio=dict(x=1, y=df_mod.index.max()/chords_mod.max(), z=(global_max_depth/chords_mod.max())*2),
-                xaxis=dict(title='Odległość (mm)'),
-                yaxis=dict(title='Wysokość (mm)'),
-                zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
-            )
 
             with col1:
                 st.subheader(f"Oryginał: {orig_name}")
-                # Przekazujemy przefiltrowaną, bezpieczną macierz bez pustych wierszy do silnika Plotly 3D
-                fig1 = go.Figure(data=[go.Surface(x=x_orig_ax, y=y_orig_ax, z=np.nan_to_num(Z_orig, nan=0.0), colorscale='viridis', cmin=0, cmax=global_max_depth)])
+                # <<< POPRAWKA: Przekazujemy czyste dane Z_orig z wartościami NaN (bez nan_to_num) tak, jak sugerował Twój kolega
+                fig1 = go.Figure(data=[go.Surface(x=x_orig_ax, y=y_orig_ax, z=Z_orig, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig1.update_layout(scene=scene_orig, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig1, use_container_width=True)
 
             with col2:
                 st.subheader(f"Modyfikacja: {mod_name}")
-                fig2 = go.Figure(data=[go.Surface(x=x_mod_ax, y=y_mod_ax, z=np.nan_to_num(Z_mod, nan=0.0), colorscale='viridis', cmin=0, cmax=global_max_depth)])
+                # <<< POPRAWKA: Przekazujemy czyste dane Z_mod z wartościami NaN (bez nan_to_num)
+                fig2 = go.Figure(data=[go.Surface(x=x_mod_ax, y=y_mod_ax, z=Z_mod, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig2.update_layout(scene=scene_mod, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig2, use_container_width=True)
 
@@ -234,19 +238,19 @@ if orig_file and mod_file:
             
             fig_diff = go.Figure()
             
-            # Oryginał jako półprzezroczysty szary punkt odniesienia
+            # Oryginał jako półprzezroczysty szary punkt odniesienia (używamy czystego Z_orig_comm z NaN)
             fig_diff.add_trace(go.Surface(
-                x=x_comm_ax, y=y_comm_ax, z=np.nan_to_num(Z_orig_comm, nan=0.0),
+                x=x_comm_ax, y=y_comm_ax, z=Z_orig_comm,
                 colorscale=[[0, 'grey'], [1, 'grey']],
                 showscale=False,
                 opacity=0.15,
                 hoverinfo='skip'
             ))
             
-            # Powierzchnia różnicowa (pokolorowana przez Z_diff na siatce wspólnej)
+            # Powierzchnia różnicowa (pokolorowana przez Z_diff na siatce wspólnej z zachowaniem NaN)
             fig_diff.add_trace(go.Surface(
-                x=x_comm_ax, y=y_comm_ax, z=np.nan_to_num(Z_mod_comm, nan=0.0),
-                surfacecolor=np.nan_to_num(Z_diff, nan=0.0),
+                x=x_comm_ax, y=y_comm_ax, z=Z_mod_comm,
+                surfacecolor=Z_diff,
                 colorscale='rdbu',
                 cmin=-max_abs_diff,
                 cmax=max_abs_diff,
@@ -254,7 +258,7 @@ if orig_file and mod_file:
             ))
             
             scene_diff = dict(
-                aspectratio=dict(x=1, y=common_max_height/common_max_chord, z=(global_max_depth/common_max_chord)*2),
+                aspectratio=dict(x=1.0, y=1.2, z=0.6),
                 xaxis=dict(title='Odległość (mm)'),
                 yaxis=dict(title='Wysokość (mm)'),
                 zaxis=dict(title='Różnica (mm)')
@@ -290,6 +294,17 @@ if orig_file and mod_file:
             with col_t2:
                 st.subheader(f"Modyfikacja: {mod_name}")
                 st.dataframe(table_mod)
+                
+            # Sekcja diagnostyczna sugerowana przez Twojego kolegę (wygodna rozwijana zakładka)
+            with st.expander("🔍 Diagnostyka danych (Debug)"):
+                st.write("**Oryginał:**")
+                st.write(f"- Min głębokość [mm]: {np.nanmin(Z_orig):.1f}")
+                st.write(f"- Max głębokość [mm]: {np.nanmax(Z_orig):.1f}")
+                st.write(f"- Liczba poprawnych punktów siatki: {np.count_nonzero(~np.isnan(Z_orig))}")
+                st.write("**Modyfikacja:**")
+                st.write(f"- Min głębokość [mm]: {np.nanmin(Z_mod):.1f}")
+                st.write(f"- Max głębokość [mm]: {np.nanmax(Z_mod):.1f}")
+                st.write(f"- Liczba poprawnych punktów siatki: {np.count_nonzero(~np.isnan(Z_mod))}")
 
     except Exception as e:
         st.error(f"Wystąpił błąd podczas przetwarzania plików. Upewnij się, że oba pliki posiadają prawidłową strukturę. Szczegóły błędu: {e}")
