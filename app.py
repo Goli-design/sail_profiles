@@ -31,7 +31,7 @@ def parse_and_clean_sail_mm(df_full):
 
 def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji liniowej griddata.
+    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji sześciennej griddata.
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -45,16 +45,13 @@ def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    # <<< ROZWIĄZANIE BŁĘDU: Zmieniono metodę na 'linear' - gwarantuje to poprawne obliczenia 2D i brak wartości NaN >>>
     Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
     
-    # Przycinanie krawędzi liku wolnego
+    # <<< ROZWIĄZANIE: Płynna interpolacja liku wolnego (eliminacja schodków) >>>
+    # Zamiast szukać najbliższego profilu, obliczamy dokładną, płynną cięciwę dla każdej wysokości siatki
     for i, y_val in enumerate(grid_y[:, 0]):
-        closest_y_idx = np.abs(df_data.index.to_numpy() - y_val).argmin()
-        closest_y = df_data.index[closest_y_idx]
-        max_x = chord_lengths.loc[closest_y]
-        if max_x is not None:
-            Z_grid[i, grid_x[i, :] > max_x] = np.nan
+        max_x = np.interp(y_val, chord_lengths.index, chord_lengths.values)
+        Z_grid[i, grid_x[i, :] > max_x] = np.nan
             
     Z_grid[:, 0] = 0
     return Z_grid
@@ -198,15 +195,22 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
-        # Optymalne proporcje osi
+        # <<< ROZWIĄZANIE: Precyzyjny dobór proporcji osi (aspectratio) na podstawie rzeczywistych wymiarów [mm] >>>
+        # Zapewnia naturalny wygląd żagla i dokładnie dwukrotne (2x) powiększenie osi Z.
+        y_to_x_ratio_orig = (df_orig.index.max() - df_orig.index.min()) / chords_orig.max()
+        z_to_x_ratio_orig = (global_max_depth / chords_orig.max()) * 2.0  # Dokładnie 2-krotne powiększenie osi Z
+        
+        y_to_x_ratio_mod = (df_mod.index.max() - df_mod.index.min()) / chords_mod.max()
+        z_to_x_ratio_mod = (global_max_depth / chords_mod.max()) * 2.0
+
         scene_orig = dict(
-            aspectratio=dict(x=1.0, y=1.2, z=0.6),
+            aspectratio=dict(x=1.0, y=y_to_x_ratio_orig, z=z_to_x_ratio_orig),
             xaxis=dict(title='Odległość (mm)'),
             yaxis=dict(title='Wysokość (mm)'),
             zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
         )
         scene_mod = dict(
-            aspectratio=dict(x=1.0, y=1.2, z=0.6),
+            aspectratio=dict(x=1.0, y=y_to_x_ratio_mod, z=z_to_x_ratio_mod),
             xaxis=dict(title='Odległość (mm)'),
             yaxis=dict(title='Wysokość (mm)'),
             zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
@@ -255,8 +259,12 @@ if orig_file and mod_file:
                 colorbar=dict(title="Różnica (mm)")
             ))
             
+            # Skalowanie różnicy na siatce wspólnej
+            y_to_x_ratio_comm = (common_max_height - common_min_height) / common_max_chord
+            z_to_x_ratio_comm = (global_max_depth / common_max_chord) * 2.0
+            
             scene_diff = dict(
-                aspectratio=dict(x=1.0, y=1.2, z=0.6),
+                aspectratio=dict(x=1.0, y=y_to_x_ratio_comm, z=z_to_x_ratio_comm),
                 xaxis=dict(title='Odległość (mm)'),
                 yaxis=dict(title='Wysokość (mm)'),
                 zaxis=dict(title='Różnica (mm)')
