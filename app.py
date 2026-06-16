@@ -8,7 +8,7 @@ import re
 
 # --- USTAWIENIA STRONY STREAMLIT ---
 st.set_page_config(
-    page_title="Interaktywny Analizator Żagli 49er / FX (mm)",
+    page_title="Analizator profili żagli 49er / FX",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -135,13 +135,13 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
 
 # --- INTERFEJS UŻYTKOWNIKA ---
 
-st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli [Skala mm]")
+st.title("⛵ Analizator i komparator Profili żagli 49er ? FX")
 st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**.")
 
 # Panel boczny - Przesyłanie plików i konfiguracja
 st.sidebar.header("📁 Wczytywanie danych")
-orig_file = st.sidebar.file_uploader("Wybierz żagiel ORYGINALNY (CSV w mm)", type="csv")
-mod_file = st.sidebar.file_uploader("Wybierz żagiel ZMODYFIKOWANY (CSV w mm)", type="csv")
+orig_file = st.sidebar.file_uploader("Wybierz żagiel REFERENCYJNY", type="csv")
+mod_file = st.sidebar.file_uploader("Wybierz żagiel PORÓWNAWCZY", type="csv")
 
 # Suwak do płynnej regulacji powiększenia osi Z
 st.sidebar.header("🎛️ Parametry wizualizacji")
@@ -213,7 +213,7 @@ if orig_file and mod_file:
         table_mod = analyze_profile_geometry_mm(df_mod, chords_mod)
 
         # --- ZAKŁADKI W INTERFEJSIE ---
-        tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
+        tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres różnicowy 3D [mm]", "📋 Parametry & raport Excel"])
 
         # Dynamiczne skalowanie osi Z przy użyciu wartości z suwaka (z_multiplier)
         y_to_x_ratio_orig = (df_orig.index.max() - df_orig.index.min()) / chords_orig.max()
@@ -254,7 +254,7 @@ if orig_file and mod_file:
                 st.plotly_chart(fig2, use_container_width=True)
 
         with tab2:
-            st.header("Interaktywny Wykres Różnicowy 3D")
+            st.header("Interaktywny wykres różnicowy 3D")
             st.write("Czerwony kolor = żagiel zmodyfikowany jest głębszy. Niebieski = spłaszczony. Wszystkie osie w [mm].")
             
             fig_diff = go.Figure()
@@ -292,7 +292,7 @@ if orig_file and mod_file:
             st.plotly_chart(fig_diff, use_container_width=True)
 
         with tab3:
-            st.header("Analiza Parametryczna Profili")
+            st.header("Parametryczna analiza profili")
             
             # Generowanie skoroszytu Excel w pamięci RAM serwera
             buffer = io.BytesIO()
@@ -305,7 +305,7 @@ if orig_file and mod_file:
                 table_mod.to_excel(writer, sheet_name=sheet_mod)
                 
             st.download_button(
-                label="📥 Pobierz wyniki w jednym pliku Excel (.xlsx)",
+                label="📥 Pobierz wyniki w pliku Excel (.xlsx)",
                 data=buffer.getvalue(),
                 file_name=f"analiza_porownawcza_{orig_name}_vs_{mod_name}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
