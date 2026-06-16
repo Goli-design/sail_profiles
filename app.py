@@ -15,9 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wyłączenie ostrzeżeń Matplotlib dotyczących wątków
-st.set_option('deprecation.showPyplotGlobalUse', False)
-
 # --- FUNKCJE POMOCNICZE (MATEMATYKA I PRZETWARZANIE) ---
 
 def parse_and_clean_sail(df_full):
@@ -48,7 +45,7 @@ def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
     
     all_points = pd.concat([df_stacked, leech_points], ignore_index=True)
     
-    # <<< ZABEZPIECZENIE: Usuwanie duplikatów współrzędnych (x, y) przed interpolacją 2D >>>
+    # ZABEZPIECZENIE: Usuwanie duplikatów współrzędnych (x, y) przed interpolacją 2D
     all_points = all_points.drop_duplicates(subset=['distance', 'height'], keep='first')
     
     points = all_points[['distance', 'height']].values
@@ -78,8 +75,7 @@ def analyze_profile_geometry(df_data, chord_lengths):
         z_measured = profile_clean.values
         chord_cm = chord_lengths.loc[height]
         
-        # <<< ZABEZPIECZENIE: Odrzucenie punktów pomiarowych leżących na lub poza długością cięciwy >>>
-        # Zapobiega to powstawaniu duplikatów współrzędnych x przy dodawaniu punktu liku wolnego.
+        # ZABEZPIECZENIE: Odrzucenie punktów pomiarowych leżących na lub poza długością cięciwy
         valid_mask = x_measured < chord_cm
         x_measured = x_measured[valid_mask]
         z_measured = z_measured[valid_mask]
