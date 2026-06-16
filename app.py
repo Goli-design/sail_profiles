@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy.interpolate import griddata, UnivariateSpline
 import plotly.graph_objects as go
+from scipy.interpolate import griddata, UnivariateSpline
 import io
 import re
 
@@ -181,13 +181,15 @@ if orig_file and mod_file:
 
             with col1:
                 st.subheader(f"Oryginał: {orig_name}")
-                fig1 = go.Figure(data=[go.Surface(x=X_master, y=Y_master, z=Z_orig, colorscale='Viridis', cmin=0, cmax=global_max_depth)])
+                # <<< POPRAWKA: 'viridis' z małej litery
+                fig1 = go.Figure(data=[go.Surface(x=X_master, y=Y_master, z=Z_orig, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig1.update_layout(scene=scene_layout, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig1, use_container_width=True)
 
             with col2:
                 st.subheader(f"Modyfikacja: {mod_name}")
-                fig2 = go.Figure(data=[go.Surface(x=X_master, y=Y_master, z=Z_mod, colorscale='Viridis', cmin=0, cmax=global_max_depth)])
+                # <<< POPRAWKA: 'viridis' z małej litery
+                fig2 = go.Figure(data=[go.Surface(x=X_master, y=Y_master, z=Z_mod, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig2.update_layout(scene=scene_layout, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig2, use_container_width=True)
 
@@ -206,11 +208,12 @@ if orig_file and mod_file:
                 hoverinfo='skip'
             ))
             
-            # Powierzchnia zmodyfikowana pokolorowana wartościami różnic (coolwarm)
+            # Powierzchnia zmodyfikowana pokolorowana wartościami różnic (rdbu)
             fig_diff.add_trace(go.Surface(
                 x=X_master, y=Y_master, z=Z_mod,
                 surfacecolor=Z_diff,
-                colorscale='Coolwarm',
+                # <<< POPRAWKA: Zmiana 'Coolwarm' na 'rdbu' (małymi literami)
+                colorscale='rdbu',
                 cmin=-max_abs_diff,
                 cmax=max_abs_diff,
                 colorbar=dict(title="Różnica (mm)")
