@@ -37,7 +37,7 @@ def parse_and_clean_sail(df_full):
 
 def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji sześciennej griddata.
+    Tworzy stabilną powierzchnię 2D żagla za pomocą interpolacji liniowej griddata (odpornej na błędy numeryczne).
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -51,7 +51,8 @@ def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    Z_grid = griddata(points, values, (grid_x, grid_y), method='cubic')
+    # Użycie metody 'linear' zamiast 'cubic' gwarantuje 100% stabilności i brak błędu Singular Matrix
+    Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
     
     # Przycinanie krawędzi liku wolnego
     for i, y_val in enumerate(grid_y[:, 0]):
@@ -67,6 +68,7 @@ def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
 def analyze_profile_geometry(df_data, chord_lengths):
     """
     Oblicza 8 parametrów aerodynamicznych profilu dla każdej wysokości żagla.
+    W pełni odporna na małą liczbę punktów pomiarowych u góry żagla.
     """
     results = []
     for height, profile in df_data.iterrows():
@@ -84,7 +86,20 @@ def analyze_profile_geometry(df_data, chord_lengths):
         z_complete = np.append(z_measured, 0)
         sort_idx = np.argsort(x_complete)
         
-        spline = UnivariateSpline(x_complete[sort_idx], z_complete[sort_idx], s=0, k=3)
+        x_sorted = x_complete[sort_idx]
+        z_sorted = z_complete[sort_idx]
+        
+        # <<< ROZWIĄZANIE: Dynamiczne dopasowanie stopnia krzywej spline do liczby punktów >>>
+        # Chroni przed błędem Singular Matrix dla wąskich profili górnych (wymagane k + 1 punktów)
+        num_pts = len(x_sorted)
+        k_degree = min(3, num_pts - 1)
+        
+        if k_degree >= 1:
+            spline = UnivariateSpline(x_sorted, z_sorted, s=0, k=k_degree)
+        else:
+            # Rezerwowa ścieżka w przypadku skrajnego braku danych
+            st.warning(f"Zbyt mało punktów pomiarowych dla wysokości {height} cm. Pominięto zaawansowane wygładzanie.")
+            continue
         
         x_fine = np.linspace(0, chord_cm, 2000)
         z_fine = spline(x_fine)
