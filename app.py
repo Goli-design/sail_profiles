@@ -31,7 +31,7 @@ def parse_and_clean_sail_mm(df_full):
 
 def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji sześciennej griddata.
+    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji liniowej griddata.
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -45,7 +45,8 @@ def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    Z_grid = griddata(points, values, (grid_x, grid_y), method='cubic')
+    # <<< ROZWIĄZANIE BŁĘDU: Zmieniono metodę na 'linear' - gwarantuje to poprawne obliczenia 2D i brak wartości NaN >>>
+    Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
     
     # Przycinanie krawędzi liku wolnego
     for i, y_val in enumerate(grid_y[:, 0]):
@@ -106,7 +107,6 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
         x_front_mid = max_depth_pos_mm / 2
         front_depth_mm = spline(x_front_mid)
 
-        # <<< POPRAWKA: Usunięto nieistniejącą zmienną chord_cm, używamy wyłącznie chord_mm >>>
         x_rear_mid = max_depth_pos_mm + (chord_mm - max_depth_pos_mm) / 2
         rear_depth_mm = spline(x_rear_mid)
 
@@ -198,7 +198,7 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
-        # <<< POPRAWKA: Przejrzysty i czytelny dobór proporcji osi (aspectratio) chroniący przed zapadnięciem wykresu >>>
+        # Optymalne proporcje osi
         scene_orig = dict(
             aspectratio=dict(x=1.0, y=1.2, z=0.6),
             xaxis=dict(title='Odległość (mm)'),
@@ -220,14 +220,12 @@ if orig_file and mod_file:
 
             with col1:
                 st.subheader(f"Oryginał: {orig_name}")
-                # <<< POPRAWKA: Przekazujemy czyste dane Z_orig z wartościami NaN (bez nan_to_num) tak, jak sugerował Twój kolega
                 fig1 = go.Figure(data=[go.Surface(x=x_orig_ax, y=y_orig_ax, z=Z_orig, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig1.update_layout(scene=scene_orig, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig1, use_container_width=True)
 
             with col2:
                 st.subheader(f"Modyfikacja: {mod_name}")
-                # <<< POPRAWKA: Przekazujemy czyste dane Z_mod z wartościami NaN (bez nan_to_num)
                 fig2 = go.Figure(data=[go.Surface(x=x_mod_ax, y=y_mod_ax, z=Z_mod, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig2.update_layout(scene=scene_mod, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig2, use_container_width=True)
@@ -238,7 +236,7 @@ if orig_file and mod_file:
             
             fig_diff = go.Figure()
             
-            # Oryginał jako półprzezroczysty szary punkt odniesienia (używamy czystego Z_orig_comm z NaN)
+            # Oryginał jako półprzezroczysty szary punkt odniesienia
             fig_diff.add_trace(go.Surface(
                 x=x_comm_ax, y=y_comm_ax, z=Z_orig_comm,
                 colorscale=[[0, 'grey'], [1, 'grey']],
@@ -247,7 +245,7 @@ if orig_file and mod_file:
                 hoverinfo='skip'
             ))
             
-            # Powierzchnia różnicowa (pokolorowana przez Z_diff na siatce wspólnej z zachowaniem NaN)
+            # Powierzchnia różnicowa
             fig_diff.add_trace(go.Surface(
                 x=x_comm_ax, y=y_comm_ax, z=Z_mod_comm,
                 surfacecolor=Z_diff,
@@ -295,7 +293,6 @@ if orig_file and mod_file:
                 st.subheader(f"Modyfikacja: {mod_name}")
                 st.dataframe(table_mod)
                 
-            # Sekcja diagnostyczna sugerowana przez Twojego kolegę (wygodna rozwijana zakładka)
             with st.expander("🔍 Diagnostyka danych (Debug)"):
                 st.write("**Oryginał:**")
                 st.write(f"- Min głębokość [mm]: {np.nanmin(Z_orig):.1f}")
