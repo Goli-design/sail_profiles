@@ -8,7 +8,7 @@ import re
 
 # --- USTAWIENIA STRONY STREAMLIT ---
 st.set_page_config(
-    page_title="Analizator profili żagli 49er / FX",
+    page_title="Analizator profili żagli 49er i FX",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -135,7 +135,7 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
 
 # --- INTERFEJS UŻYTKOWNIKA ---
 
-st.title("⛵ Analizator i komparator Profili żagli 49er ? FX")
+st.title("⛵ Analizator i komparator profili żagli 49er / FX")
 st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**.")
 
 # Panel boczny - Przesyłanie plików i konfiguracja
@@ -335,4 +335,4 @@ if orig_file and mod_file:
 
 else:
     # Komunikat startowy, gdy pliki nie zostały jeszcze wczytane
-    st.info("👈 Aby rozpocząć analizę, prześlij oba pliki CSV (Oryginalny oraz Zmodyfikowany w skali mm) w panelu bocznym po lewej stronie.")
+    st.info("👈 Aby rozpocząć analizę, prześlij oba pliki CSV (Referencyjny oraz Porównawczy) w panelu bocznym po lewej stronie.")
