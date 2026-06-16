@@ -31,7 +31,7 @@ def parse_and_clean_sail_mm(df_full):
 
 def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji sześciennej griddata.
+    Tworzy ultra-gładką powierzchnię 2D żagla za pomocą interpolacji sześciennej (cubic).
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -45,7 +45,8 @@ def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
+    # <<< PRZYWRÓCONO: Metoda 'cubic' (sześcienna) zapewniająca idealnie gładką powierzchnię żagla >>>
+    Z_grid = griddata(points, values, (grid_x, grid_y), method='cubic')
     
     # Płynna interpolacja liku wolnego (eliminacja schodków za pomocą dokładnego przycinania)
     for i, y_val in enumerate(grid_y[:, 0]):
@@ -136,10 +137,21 @@ def analyze_profile_geometry_mm(df_data, chord_lengths):
 st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli [Skala mm]")
 st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**.")
 
-# Panel boczny - Przesyłanie plików
+# Panel boczny - Przesyłanie plików i konfiguracja
 st.sidebar.header("📁 Wczytywanie danych")
 orig_file = st.sidebar.file_uploader("Wybierz żagiel ORYGINALNY (CSV w mm)", type="csv")
 mod_file = st.sidebar.file_uploader("Wybierz żagiel ZMODYFIKOWANY (CSV w mm)", type="csv")
+
+# <<< NOWOŚĆ: Interaktywny suwak do płynnej regulacji powiększenia osi Z >>>
+st.sidebar.header("🎛️ Parametry wizualizacji")
+z_multiplier = st.sidebar.slider(
+    "Powiększenie osi Z (głębokość żagla)", 
+    min_value=1.0, 
+    max_value=5.0, 
+    value=2.0, 
+    step=0.1,
+    help="Pozwala uwypuklić profil żagla w przestrzeni 3D. 1.0 oznacza proporcje rzeczywiste."
+)
 
 if orig_file and mod_file:
     # Wczytanie plików wejściowych
@@ -159,7 +171,7 @@ if orig_file and mod_file:
         max_height = max(df_orig.index.max(), df_mod.index.max())
         min_height = min(df_orig.index.min(), df_mod.index.min())
 
-        # <<< ROZWIĄZANIE GŁADKOŚCI: Zagęszczona siatka obliczeniowa (krok 10 mm poziom, 20 mm pion) >>>
+        # Zagęszczona siatka obliczeniowa (krok 10 mm poziom, 20 mm pion)
         x_orig_ax = np.arange(0, chords_orig.max() + 10, 10)
         y_orig_ax = np.arange(df_orig.index.min(), df_orig.index.max() + 20, 20)
         X_orig_grid, Y_orig_grid = np.meshgrid(x_orig_ax, y_orig_ax)
@@ -194,12 +206,12 @@ if orig_file and mod_file:
         # --- ZAKŁADKI W INTERFEJSIE ---
         tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
-        # Precyzyjny dobór proporcji osi (aspectratio) na podstawie rzeczywistych wymiarów [mm]
+        # <<< POPRAWKA: Dynamiczne skalowanie osi Z przy użyciu wartości z suwaka (z_multiplier) >>>
         y_to_x_ratio_orig = (df_orig.index.max() - df_orig.index.min()) / chords_orig.max()
-        z_to_x_ratio_orig = (global_max_depth / chords_orig.max()) * 2.0  # Dokładnie 2-krotne powiększenie osi Z
+        z_to_x_ratio_orig = (global_max_depth / chords_orig.max()) * z_multiplier
         
         y_to_x_ratio_mod = (df_mod.index.max() - df_mod.index.min()) / chords_mod.max()
-        z_to_x_ratio_mod = (global_max_depth / chords_mod.max()) * 2.0
+        z_to_x_ratio_mod = (global_max_depth / chords_mod.max()) * z_multiplier
 
         scene_orig = dict(
             aspectratio=dict(x=1.0, y=y_to_x_ratio_orig, z=z_to_x_ratio_orig),
@@ -257,9 +269,9 @@ if orig_file and mod_file:
                 colorbar=dict(title="Różnica (mm)")
             ))
             
-            # Skalowanie różnicy na siatce wspólnej
+            # Skalowanie różnicy na siatce wspólnej przy użyciu wartości z suwaka
             y_to_x_ratio_comm = (common_max_height - common_min_height) / common_max_chord
-            z_to_x_ratio_comm = (global_max_depth / common_max_chord) * 2.0
+            z_to_x_ratio_comm = (global_max_depth / common_max_chord) * z_multiplier
             
             scene_diff = dict(
                 aspectratio=dict(x=1.0, y=y_to_x_ratio_comm, z=z_to_x_ratio_comm),
