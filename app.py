@@ -1,41 +1,39 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.colors as mcolors
 from scipy.interpolate import griddata, UnivariateSpline
 import io
 import re
 
 # --- USTAWIENIA STRONY STREAMLIT ---
 st.set_page_config(
-    page_title="Interaktywny Analizator Żagli 49er / FX",
+    page_title="Analizator Profili Żagli 49er / FX (mm)",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- FUNKCJE POMOCNICZE (MATEMATYKA I PRZETWARZANIE) ---
+# --- FUNKCJE POMOCNICZE (CAŁOŚĆ W MILIMETRACH [mm]) ---
 
-def parse_and_clean_sail(df_full):
+def parse_and_clean_sail_mm(df_full):
     """
-    Oczyszcza dane wejściowe, wyodrębnia długości cięciw i ujednolica jednostki do [cm].
+    Wczytuje dane żagla, gdzie wszystkie wartości (wysokość, odległość, głębokość, cięciwa) są w [mm].
     """
     chord_col = next((col for col in df_full.columns if 'chord' in col.lower()), None)
     if not chord_col:
         raise ValueError("Plik CSV musi zawierać kolumnę z długością cięciwy (np. 'Chord length').")
         
     chord_lengths = df_full[chord_col].copy()
-    # Detekcja mm i konwersja na cm
-    if chord_lengths.max() > 300:
-        chord_lengths = chord_lengths / 10.0
-        
     df_data = df_full.drop(columns=[chord_col])
     df_data.columns = pd.to_numeric(df_data.columns)
     
     return df_data, chord_lengths
 
-def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
+def get_smooth_surface_2d_mm(df_data, chord_lengths, grid_x, grid_y):
     """
-    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji sześciennej griddata.
+    Tworzy wygładzoną powierzchnię 2D żagla za pomocą interpolacji liniowej griddata.
     """
     leech_points = pd.DataFrame({'height': chord_lengths.index, 'distance': chord_lengths.values, 'depth': 0})
     df_stacked = df_data.stack().reset_index()
@@ -43,13 +41,13 @@ def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
     
     all_points = pd.concat([df_stacked, leech_points], ignore_index=True)
     
-    # ZABEZPIECZENIE: Usuwanie duplikatów współrzędnych (x, y) przed interpolacją 2D
+    # ZABEZPIECZENIE: Usuwanie duplikatów współrzędnych przed interpolacją 2D
     all_points = all_points.drop_duplicates(subset=['distance', 'height'], keep='first')
     
     points = all_points[['distance', 'height']].values
     values = all_points['depth'].values
 
-    Z_grid = griddata(points, values, (grid_x, grid_y), method='cubic')
+    Z_grid = griddata(points, values, (grid_x, grid_y), method='linear')
     
     # Przycinanie krawędzi liku wolnego
     for i, y_val in enumerate(grid_y[:, 0]):
@@ -62,31 +60,31 @@ def get_smooth_surface_2d(df_data, chord_lengths, grid_x, grid_y):
     Z_grid[:, 0] = 0
     return Z_grid
 
-def analyze_profile_geometry(df_data, chord_lengths):
+def analyze_profile_geometry_mm(df_data, chord_lengths):
     """
     Oblicza 8 parametrów aerodynamicznych profilu dla każdej wysokości żagla.
-    Odporna na małą liczbę punktów pomiarowych u góry żagla.
+    Wszystkie obliczenia i dane wejściowe/wyjściowe są w [mm].
     """
     results = []
-    for height, profile in df_data.iterrows():
+    for height_mm, profile in df_data.iterrows():
         profile_clean = profile.dropna()
         x_measured = profile_clean.index.values.astype(float)
         z_measured = profile_clean.values
-        chord_cm = chord_lengths.loc[height]
+        chord_mm = chord_lengths.loc[height_mm]
         
-        # ZABEZPIECZENIE: Odrzucenie punktów pomiarowych leżących na lub poza długością cięciwy
-        valid_mask = x_measured < chord_cm
+        # ZABEZPIECZENIE: Odrzucenie punktów leżących poza długością cięciwy
+        valid_mask = x_measured < chord_mm
         x_measured = x_measured[valid_mask]
         z_measured = z_measured[valid_mask]
         
-        x_complete = np.append(x_measured, chord_cm)
+        x_complete = np.append(x_measured, chord_mm)
         z_complete = np.append(z_measured, 0)
         sort_idx = np.argsort(x_complete)
         
         x_sorted = x_complete[sort_idx]
         z_sorted = z_complete[sort_idx]
         
-        # Dynamiczne dopasowanie stopnia krzywej spline do liczby punktów (zapobiega Singular Matrix)
+        # Dynamiczne dopasowanie stopnia krzywej spline do liczby punktów
         num_pts = len(x_sorted)
         k_degree = min(3, num_pts - 1)
         
@@ -95,22 +93,23 @@ def analyze_profile_geometry(df_data, chord_lengths):
         else:
             continue
         
-        x_fine = np.linspace(0, chord_cm, 2000)
+        x_fine = np.linspace(0, chord_mm, 2000)
         z_fine = spline(x_fine)
         
         max_depth_mm = np.max(z_fine)
-        max_depth_pos_cm = x_fine[np.argmax(z_fine)]
+        max_depth_pos_mm = x_fine[np.argmax(z_fine)]
 
-        if chord_cm > 0:
-            max_depth_perc_chord = (max_depth_mm / 10 / chord_cm) * 100
-            max_depth_pos_perc_chord = (max_depth_pos_cm / chord_cm) * 100
+        if chord_mm > 0:
+            # Ponieważ obie wartości są w [mm], nie dzielimy już przez 10!
+            max_depth_perc_chord = (max_depth_mm / chord_mm) * 100
+            max_depth_pos_perc_chord = (max_depth_pos_mm / chord_mm) * 100
         else:
             max_depth_perc_chord = max_depth_pos_perc_chord = 0
         
-        x_front_mid = max_depth_pos_cm / 2
+        x_front_mid = max_depth_pos_mm / 2
         front_depth_mm = spline(x_front_mid)
 
-        x_rear_mid = max_depth_pos_cm + (chord_cm - max_depth_pos_cm) / 2
+        x_rear_mid = max_depth_pos_mm + (chord_mm - max_depth_pos_mm) / 2
         rear_depth_mm = spline(x_rear_mid)
 
         if max_depth_mm > 0:
@@ -120,14 +119,15 @@ def analyze_profile_geometry(df_data, chord_lengths):
             front_depth_perc_max = rear_depth_perc_max = 0
         
         spline_deriv = spline.derivative(n=1)
-        slope_entry = spline_deriv(0) / 10.0
+        # Pochodna w mm/mm nie wymaga skalowania jednostek!
+        slope_entry = spline_deriv(0)
         entry_angle_deg = np.degrees(np.arctan(slope_entry))
 
-        slope_exit = spline_deriv(chord_cm) / 10.0
+        slope_exit = spline_deriv(chord_mm)
         exit_angle_deg = np.degrees(np.arctan(slope_exit))
 
         results.append({
-            'Wysokość (cm)': height,
+            'Wysokość (mm)': height_mm,
             'Maks. głębokość (% cięciwy)': round(max_depth_perc_chord, 1),
             'Poz. maks. głębokości (% cięciwy)': round(max_depth_pos_perc_chord, 1),
             'Głęb. przednia (% maks.)': round(front_depth_perc_max, 1),
@@ -136,19 +136,20 @@ def analyze_profile_geometry(df_data, chord_lengths):
             'Kąt spływu (stopnie)': round(exit_angle_deg, 1)
         })
         
-    return pd.DataFrame(results).set_index('Wysokość (cm)')
+    return pd.DataFrame(results).set_index('Wysokość (mm)')
 
 # --- INTERFEJS UŻYTKOWNIKA ---
 
-st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli")
-st.markdown("Narzędzie dedykowane dla klas **49er** oraz **49er FX**. Porównuje dwa projekty żagli w przestrzeni 3D oraz oblicza parametry profili.")
+st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli [Skala mm]")
+st.markdown("Narzędzie obsługuje pliki pomiarowe, w których **wszystkie wymiary są wyrażone w milimetrach [mm]**.")
 
 # Panel boczny - Przesyłanie plików
 st.sidebar.header("📁 Wczytywanie danych")
-orig_file = st.sidebar.file_uploader("Wybierz żagiel ORYGINALNY (CSV)", type="csv")
-mod_file = st.sidebar.file_uploader("Wybierz żagiel ZMODYFIKOWANY (CSV)", type="csv")
+orig_file = st.sidebar.file_uploader("Wybierz żagiel ORYGINALNY (CSV w mm)", type="csv")
+mod_file = st.sidebar.file_uploader("Wybierz żagiel ZMODYFIKOWANY (CSV w mm)", type="csv")
 
 if orig_file and mod_file:
+    # Wczytanie plików wejściowych
     df_orig_raw = pd.read_csv(orig_file, sep=';', decimal=',', index_col=0)
     df_mod_raw = pd.read_csv(mod_file, sep=';', decimal=',', index_col=0)
     
@@ -156,113 +157,106 @@ if orig_file and mod_file:
     mod_name = mod_file.name.replace('.csv', '')
     
     try:
-        # Przetwarzanie i normalizacja danych
-        df_orig, chords_orig = parse_and_clean_sail(df_orig_raw)
-        df_mod, chords_mod = parse_and_clean_sail(df_mod_raw)
-
-        # 1. Obliczenia siatek lokalnych (eliminacja pustych wierszy NaN dla Plotly)
-        # Oryginał:
-        x_orig_ax = np.arange(0, chords_orig.max() + 5, 5)
-        y_orig_ax = np.arange(df_orig.index.min(), df_orig.index.max() + 5, 5)
-        X_orig_grid, Y_orig_grid = np.meshgrid(x_orig_ax, y_orig_ax)
-        Z_orig = get_smooth_surface_2d(df_orig, chords_orig, X_orig_grid, Y_orig_grid)
-
-        # Modyfikacja:
-        x_mod_ax = np.arange(0, chords_mod.max() + 5, 5)
-        y_mod_ax = np.arange(df_mod.index.min(), df_mod.index.max() + 5, 5)
-        X_mod_grid, Y_mod_grid = np.meshgrid(x_mod_ax, y_mod_ax)
-        Z_mod = get_smooth_surface_2d(df_mod, chords_mod, X_mod_grid, Y_mod_grid)
-
-        # 2. Obliczenie siatki wspólnej (tylko dla części pokrywającej się - bezpieczna dla wykresu różnic)
-        common_max_chord = min(chords_orig.max(), chords_mod.max())
-        common_max_height = min(df_orig.index.max(), df_mod.index.max())
-        common_min_height = max(df_orig.index.min(), df_mod.index.min())
-
-        x_comm_ax = np.arange(0, common_max_chord + 5, 5)
-        y_comm_ax = np.arange(common_min_height, common_max_height + 5, 5)
-        X_comm, Y_comm = np.meshgrid(x_comm_ax, y_comm_ax)
-
-        # Wygładzenie na siatce wspólnej do celów porównawczych
-        Z_orig_comm = get_smooth_surface_2d(df_orig, chords_orig, X_comm, Y_comm)
-        Z_mod_comm = get_smooth_surface_2d(df_mod, chords_mod, X_comm, Y_comm)
+        # Przetwarzanie danych
+        df_orig, chords_orig = parse_and_clean_sail_mm(df_orig_raw)
+        df_mod, chords_mod = parse_and_clean_sail_mm(df_mod_raw)
         
-        Z_diff = Z_mod_comm - Z_orig_comm
-        max_abs_diff = np.nanmax(np.abs(Z_diff))
-        global_max_depth = np.nanmax([np.nanmax(Z_orig), np.nanmax(Z_mod)])
+        # Obliczenie maksymalnych wymiarów siatki głównej (w całości w [mm])
+        max_chord = max(chords_orig.max(), chords_mod.max())
+        max_height = max(df_orig.index.max(), df_mod.index.max())
+        min_height = min(df_orig.index.min(), df_mod.index.min())
 
-        # Obliczenia tabelaryczne
-        table_orig = analyze_profile_geometry(df_orig, chords_orig)
-        table_mod = analyze_profile_geometry(df_mod, chords_mod)
+        # Siatka obliczeniowa z krokiem co 50 mm (czyli 5 cm)
+        x_master = np.arange(0, max_chord + 50, 50)
+        y_master = np.arange(min_height, max_height + 50, 50)
+        X_master, Y_master = np.meshgrid(x_master, y_master)
+
+        # Wygładzanie 2D powierzchni żagli
+        Z_orig = get_smooth_surface_2d_mm(df_orig, chords_orig, X_master, Y_master)
+        Z_mod = get_smooth_surface_2d_mm(df_mod, chords_mod, X_master, Y_master)
+        
+        global_max_depth = np.nanmax([Z_orig, Z_mod])
+        Z_diff = Z_mod - Z_orig
+        max_abs_diff = np.nanmax(np.abs(Z_diff))
+
+        # Obliczenia parametrów 2D
+        table_orig = analyze_profile_geometry_mm(df_orig, chords_orig)
+        table_mod = analyze_profile_geometry_mm(df_mod, chords_mod)
 
         # --- ZAKŁADKI W INTERFEJSIE ---
-        tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D", "🔍 Wykres Różnicowy 3D", "📋 Parametry & Raport Excel"])
+        tab1, tab2, tab3 = st.tabs(["📊 Porównanie 3D [mm]", "🔍 Wykres Różnicowy 3D [mm]", "📋 Parametry & Raport Excel"])
 
         with tab1:
-            st.header("Interaktywne porównanie geometrii żagli (Obrotowe modele 3D)")
-            st.write("Użyj myszki, aby obracać, przybliżać (scroll) i przesuwać wykresy.")
+            st.header("Porównanie geometrii żagli (Wygładzone modele 3D)")
+            st.write("Wizualizacja wygenerowana przy zachowaniu proporcji rzeczywistych (2x przewyższenie osi Z). Wszystkie osie w [mm].")
             
-            col1, col2 = st.columns(2)
+            # Tworzenie stabilnego wykresu Matplotlib dla obu żagli
+            fig_comp = plt.figure(figsize=(18, 8))
             
-            # Scena dla oryginału
-            scene_orig = dict(
-                aspectratio=dict(x=1, y=df_orig.index.max()/chords_orig.max(), z=(global_max_depth/10/chords_orig.max())*2),
-                xaxis=dict(title='Odległość (cm)'),
-                yaxis=dict(title='Wysokość (cm)'),
-                zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
-            )
-            # Scena dla modyfikacji
-            scene_mod = dict(
-                aspectratio=dict(x=1, y=df_mod.index.max()/chords_mod.max(), z=(global_max_depth/10/chords_mod.max())*2),
-                xaxis=dict(title='Odległość (cm)'),
-                yaxis=dict(title='Wysokość (cm)'),
-                zaxis=dict(title='Głębokość (mm)', range=[0, global_max_depth])
-            )
+            # --- ŻAGIEL 1: ORYGINAŁ ---
+            ax1 = fig_comp.add_subplot(1, 2, 1, projection='3d')
+            surf1 = ax1.plot_surface(X_master, Y_master, Z_orig, cmap='viridis', 
+                                     vmin=0, vmax=global_max_depth, edgecolor='none', alpha=0.9)
+            ax1.set_title(f'Oryginalny: {orig_name}', fontsize=14, pad=20)
+            # Box aspect obliczany bezpośrednio na wartościach mm!
+            ax1.set_box_aspect((np.nanmax(X_master), np.nanmax(Y_master), global_max_depth * 2))
+            ax1.view_init(elev=25., azim=-135)
+            ax1.set_xlabel('Odległość (mm)')
+            ax1.set_ylabel('Wysokość (mm)')
+            ax1.set_zlabel("Głębokość (mm)")
 
-            with col1:
-                st.subheader(f"Oryginał: {orig_name}")
-                fig1 = go.Figure(data=[go.Surface(x=x_orig_ax, y=y_orig_ax, z=Z_orig, colorscale='viridis', cmin=0, cmax=global_max_depth)])
-                fig1.update_layout(scene=scene_orig, margin=dict(l=0, r=0, b=0, t=40))
-                st.plotly_chart(fig1, use_container_width=True)
+            # --- ŻAGIEL 2: MODYFIKACJA ---
+            ax2 = fig_comp.add_subplot(1, 2, 2, projection='3d')
+            surf2 = ax2.plot_surface(X_master, Y_master, Z_mod, cmap='viridis', 
+                                     vmin=0, vmax=global_max_depth, edgecolor='none', alpha=0.9)
+            ax2.set_title(f'Zmodyfikowany: {mod_name}', fontsize=14, pad=20)
+            ax2.set_box_aspect((np.nanmax(X_master), np.nanmax(Y_master), global_max_depth * 2))
+            ax2.view_init(elev=25., azim=-135)
+            ax2.set_xlabel('Odległość (mm)')
+            ax2.set_ylabel('Wysokość (mm)')
+            ax2.set_zlabel("Głębokość (mm)")
 
-            with col2:
-                st.subheader(f"Modyfikacja: {mod_name}")
-                fig2 = go.Figure(data=[go.Surface(x=x_mod_ax, y=y_mod_ax, z=Z_mod, colorscale='viridis', cmin=0, cmax=global_max_depth)])
-                fig2.update_layout(scene=scene_mod, margin=dict(l=0, r=0, b=0, t=40))
-                st.plotly_chart(fig2, use_container_width=True)
+            # Estetyczne ułożenie legendy bez nachodzenia na wykresy
+            fig_comp.subplots_adjust(right=0.85)
+            cbar_ax = fig_comp.add_axes([0.88, 0.25, 0.02, 0.5])
+            cbar = fig_comp.colorbar(surf2, cax=cbar_ax)
+            cbar.set_label('Głębokość profilu (mm)', size=12)
+
+            st.pyplot(fig_comp)
 
         with tab2:
-            st.header("Interaktywny Wykres Różnicowy 3D")
-            st.write("Czerwony kolor = żagiel zmodyfikowany jest głębszy. Niebieski = żagiel oryginalny jest głębszy (modyfikacja spłaszczona).")
+            st.header("Trójwymiarowy Wykres Różnicowy")
+            st.write("Czerwony kolor oznacza miejsca, gdzie żagiel zmodyfikowany jest głębszy. Niebieski - gdzie jest płaski. Wszystkie osie w [mm].")
             
-            fig_diff = go.Figure()
+            fig_diff = plt.figure(figsize=(11, 9))
+            ax3 = fig_diff.add_subplot(1, 1, 1, projection='3d')
+            ax3.set_title(f'Różnica 3D: "{mod_name}" vs "{orig_name}"', fontsize=14, pad=20)
+
+            # Normalizacja kolorów od -max_diff do +max_diff
+            norm = mcolors.Normalize(vmin=-max_abs_diff, vmax=max_abs_diff)
+            cmap = plt.get_cmap('coolwarm')
+            colors = cmap(norm(Z_diff))
+
+            # Żagiel oryginalny jako lekka, szara referencja pod spodem
+            ax3.plot_surface(X_master, Y_master, Z_orig, color='grey', alpha=0.15, edgecolor='none')
             
-            # Oryginał jako półprzezroczysty szary punkt odniesienia
-            fig_diff.add_trace(go.Surface(
-                x=x_comm_ax, y=y_comm_ax, z=Z_orig_comm,
-                colorscale=[[0, 'grey'], [1, 'grey']],
-                showscale=False,
-                opacity=0.15,
-                hoverinfo='skip'
-            ))
-            
-            # Powierzchnia różnicowa (pokolorowana przez Z_diff na siatce wspólnej)
-            fig_diff.add_trace(go.Surface(
-                x=x_comm_ax, y=y_comm_ax, z=Z_mod_comm,
-                surfacecolor=Z_diff,
-                colorscale='rdbu',
-                cmin=-max_abs_diff,
-                cmax=max_abs_diff,
-                colorbar=dict(title="Różnica (mm)")
-            ))
-            
-            scene_diff = dict(
-                aspectratio=dict(x=1, y=common_max_height/common_max_chord, z=(global_max_depth/10/common_max_chord)*2),
-                xaxis=dict(title='Odległość (cm)'),
-                yaxis=dict(title='Wysokość (cm)'),
-                zaxis=dict(title='Różnica (mm)')
-            )
-            fig_diff.update_layout(scene=scene_diff, margin=dict(l=0, r=0, b=0, t=0))
-            st.plotly_chart(fig_diff, use_container_width=True)
+            # Żagiel zmodyfikowany pomalowany kolorami różnic
+            diff_surf = ax3.plot_surface(X_master, Y_master, Z_mod, facecolors=colors, 
+                                         linewidth=0, antialiased=True, shade=False, alpha=0.85)
+
+            ax3.set_box_aspect((np.nanmax(X_master), np.nanmax(Y_master), global_max_depth * 2))
+            ax3.view_init(elev=25., azim=-135)
+            ax3.set_xlabel('Odległość (mm)')
+            ax3.set_ylabel('Wysokość (mm)')
+            ax3.set_zlabel("Głębokość (mm)")
+
+            # Dodanie bocznej legendy różnic
+            m = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+            m.set_array(Z_diff)
+            cbar_diff = fig_diff.colorbar(m, shrink=0.6, aspect=20, pad=0.05, ax=ax3)
+            cbar_diff.set_label(f'Różnica głębokości (mm, {mod_name} - {orig_name})', size=11)
+
+            st.pyplot(fig_diff)
 
         with tab3:
             st.header("Analiza Parametryczna Profili")
@@ -270,6 +264,7 @@ if orig_file and mod_file:
             # Generowanie skoroszytu Excel w pamięci RAM serwera
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                # Oczyszczanie i skracanie nazw arkuszy do limitu Excela (30 znaków)
                 sheet_orig = re.sub(r'[\\/*?:\[\]]', '', orig_name)[:30]
                 sheet_mod = re.sub(r'[\\/*?:\[\]]', '', mod_name)[:30]
                 
@@ -296,4 +291,5 @@ if orig_file and mod_file:
         st.error(f"Wystąpił błąd podczas przetwarzania plików. Upewnij się, że oba pliki posiadają prawidłową strukturę. Szczegóły błędu: {e}")
 
 else:
-    st.info("👈 Aby rozpocząć analizę, prześlij oba pliki CSV (Oryginalny oraz Zmodyfikowany) w panelu bocznym po lewej stronie.")
+    # Komunikat startowy, gdy pliki nie zostały jeszcze wczytane
+    st.info("👈 Aby rozpocząć analizę, prześlij oba pliki CSV (Oryginalny oraz Zmodyfikowany w skali mm) w panelu bocznym po lewej stronie.")
