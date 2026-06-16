@@ -15,9 +15,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wyłączenie ostrzeżeń Matplotlib dotyczących wątków
-st.set_option('deprecation.showPyplotGlobalUse', False)
-
 # --- FUNKCJE POMOCNICZE (MATEMATYKA I PRZETWARZANIE) ---
 
 def parse_and_clean_sail(df_full):
@@ -125,7 +122,7 @@ def analyze_profile_geometry(df_data, chord_lengths):
 
 # --- INTERFEJS UŻYTKOWNIKA ---
 
-st.title("⛵ Analizator i Komparator Żagli")
+st.title("⛵ Aerodynamiczny Analizator i Komparator Żagli")
 st.markdown("Narzędzie dedykowane dla klas **49er** oraz **49er FX**. Porównuje dwa projekty żagli w przestrzeni 3D oraz oblicza parametry profili.")
 
 # Panel boczny - Przesyłanie plików
@@ -146,7 +143,7 @@ if orig_file and mod_file:
         df_orig, chords_orig = parse_and_clean_sail(df_orig_raw)
         df_mod, chords_mod = parse_and_clean_sail(df_mod_raw)
         
-        # <<< POPRAWKA: Obliczenie maksymalnej cięciwy na podstawie ujednoliconych jednostek (w cm) >>>
+        # Obliczenie maksymalnej cięciwy na podstawie ujednoliconych jednostek (w cm)
         max_chord = max(chords_orig.max(), chords_mod.max())
         max_height = max(df_orig.index.max(), df_mod.index.max())
         min_height = min(df_orig.index.min(), df_mod.index.min())
