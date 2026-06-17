@@ -255,7 +255,7 @@ if orig_file and mod_file:
 
         with tab2:
             st.header("Interaktywny wykres różnicowy 3D")
-            st.write("Czerwony kolor = żagiel zmodyfikowany jest głębszy. Niebieski = spłaszczony. Wszystkie osie w [mm].")
+            st.write("Wykres pokazuję jak różni się profil żagla porównawczego od referencyjnego. Wszystkie osie w [mm].")
             
             fig_diff = go.Figure()
             
@@ -275,7 +275,7 @@ if orig_file and mod_file:
                 colorscale=diff_cmap,
                 cmin=-max_abs_diff,
                 cmax=max_abs_diff,
-                colorbar=dict(title="Różnica (mm)")
+                colorbar=dict(title="(mm)")
             ))
             
             # Skalowanie różnicy na siatce wspólnej przy użyciu wartości z suwaka
@@ -313,11 +313,11 @@ if orig_file and mod_file:
             
             col_t1, col_t2 = st.columns(2)
             with col_t1:
-                st.subheader(f"Oryginał: {orig_name}")
+                st.subheader(f"Referencja: {orig_name}")
                 st.dataframe(table_orig)
                 
             with col_t2:
-                st.subheader(f"Modyfikacja: {mod_name}")
+                st.subheader(f"Poównanie: {mod_name}")
                 st.dataframe(table_mod)
                 
             with st.expander("🔍 Diagnostyka danych (Debug)"):
