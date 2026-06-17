@@ -317,7 +317,7 @@ if orig_file and mod_file:
                 st.dataframe(table_orig)
                 
             with col_t2:
-                st.subheader(f"Poównanie: {mod_name}")
+                st.subheader(f"Porównanie: {mod_name}")
                 st.dataframe(table_mod)
                 
             with st.expander("🔍 Diagnostyka danych (Debug)"):
