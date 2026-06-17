@@ -242,13 +242,13 @@ if orig_file and mod_file:
             col1, col2 = st.columns(2)
 
             with col1:
-                st.subheader(f"Oryginał: {orig_name}")
+                st.subheader(f"Referencja: {orig_name}")
                 fig1 = go.Figure(data=[go.Surface(x=x_orig_ax, y=y_orig_ax, z=Z_orig, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig1.update_layout(scene=scene_orig, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig1, use_container_width=True)
 
             with col2:
-                st.subheader(f"Modyfikacja: {mod_name}")
+                st.subheader(f"Porównanie: {mod_name}")
                 fig2 = go.Figure(data=[go.Surface(x=x_mod_ax, y=y_mod_ax, z=Z_mod, colorscale='viridis', cmin=0, cmax=global_max_depth)])
                 fig2.update_layout(scene=scene_mod, margin=dict(l=0, r=0, b=0, t=40))
                 st.plotly_chart(fig2, use_container_width=True)
